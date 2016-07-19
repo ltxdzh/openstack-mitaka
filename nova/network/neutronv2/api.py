@@ -18,6 +18,7 @@
 import copy
 import time
 import uuid
+from netaddr.ip import IPAddress
 
 from keystoneauth1 import loading as ks_loading
 from neutronclient.common import exceptions as neutron_client_exc
@@ -1127,6 +1128,24 @@ class API(base_api.NetworkAPI):
                     # TODO(jecarey) Need to address this race condition once we
                     # have the ability to update mac addresses in Neutron.
                     if request.address:
+                        # NOTE(zeng) Check if requested fixed ip in subnets' range
+                        search_opts = {'network_id': request.network_id,
+                                       'fields': 'allocation_pools'}
+                        subnets = neutron.list_subnets(**search_opts)['subnets']
+                        for subnet in subnets:
+                            allo_pools = subnet.get('allocation_pools', [])
+                            for pool in allo_pools:
+                                ip_start = IPAddress(pool.get('start', None))
+                                ip_end = IPAddress(pool.get('end', None))
+                                if ip_start <= request.address <= ip_end:
+                                    break
+                            else:
+                                continue
+                            break
+                        else:
+                            raise exception.FixedIpInvalid(
+                                                    address=request.address)
+                            
                         # TODO(jecarey) Need to look at consolidating list_port
                         # calls once able to OR filters.
                         search_opts = {'network_id': request.network_id,

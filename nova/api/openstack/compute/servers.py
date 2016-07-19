@@ -665,6 +665,7 @@ class ServersController(wsgi.Controller):
                 exception.InstanceUserDataMalformed,
                 exception.InstanceUserDataTooLarge,
                 exception.PortNotFound,
+                exception.FixedIpInvalid,
                 exception.FixedIpAlreadyInUse,
                 exception.SecurityGroupNotFound,
                 exception.PortRequiresFixedIP,
