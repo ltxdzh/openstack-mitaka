@@ -19,6 +19,7 @@ from oslo_log import log as logging
 from sqlalchemy import and_
 from sqlalchemy import orm
 from sqlalchemy.orm import exc
+from netaddr.ip import IPAddress
 
 from neutron._i18n import _
 from neutron.api.v2 import attributes
@@ -253,6 +254,17 @@ class IpamNonPluggableBackend(ipam_backend_mixin.IpamBackendMixin):
                         subnet['id'], fixed['ip_address']):
                     raise n_exc.IpAddressInUse(net_id=network_id,
                                                ip_address=fixed['ip_address'])
+
+                # Ensure that the IP's are in allocation_pools range
+                for pool in subnet.get('allocation_pools', []):
+                    ip_start = IPAddress(pool.get('start', None))
+                    ip_end = IPAddress(pool.get('end', None))
+                    ip_fixed = IPAddress(fixed['ip_address'])
+                    if ip_start <= ip_fixed <= ip_end:
+                        break
+                else:
+                    raise n_exc.InvalidIpForSubnet(
+                                            ip_address=fixed['ip_address'])
 
                 if (is_auto_addr_subnet and
                     device_owner not in
