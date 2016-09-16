@@ -149,6 +149,9 @@ libvirt_opts = [
     cfg.BoolOpt('inject_key',
                 default=False,
                 help='Inject the ssh public key at boot time'),
+    cfg.BoolOpt('inject_hostname',
+                default=False,
+                help='Inject the hostname at boot time'),
     cfg.IntOpt('inject_partition',
                 default=-2,
                 help='The partition to inject to : '
@@ -3079,6 +3082,12 @@ class LibvirtDriver(driver.ComputeDriver):
         if not CONF.libvirt.inject_password:
             admin_pass = None
 
+        # Handles the hostname injection
+        if CONF.libvirt.inject_hostname:
+            hostname = instance.get('display_name')
+        else:
+            hostname = 'localhost'
+
         # Handles the network injection.
         net = netutils.get_injected_network_template(
                 network_info, os_distro,
@@ -3103,7 +3112,7 @@ class LibvirtDriver(driver.ComputeDriver):
             try:
                 disk.inject_data(injection_image.get_model(self._conn),
                                  key, net, metadata, admin_pass, files,
-                                 os_distro=os_distro,
+                                 hostname, os_distro=os_distro,
                                  partition=target_partition,
                                  mandatory=('files',))
             except Exception as e:

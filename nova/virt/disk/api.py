@@ -358,7 +358,8 @@ class _DiskImage(object):
 # Public module functions
 
 def inject_data(image, key=None, net=None, metadata=None, admin_password=None,
-                files=None, os_distro=None, partition=None, mandatory=()):
+                files=None, hostname=None, os_distro=None,
+                partition=None, mandatory=()):
     """Inject the specified items into a disk image.
 
     :param image: instance of nova.virt.image.model.Image
@@ -367,6 +368,7 @@ def inject_data(image, key=None, net=None, metadata=None, admin_password=None,
     :param metadata: the user metadata to inject
     :param admin_password: the root password to set
     :param files: the files to copy into the image
+    :param hostname: the hostname to inject
     :param os_distro: the os distrbution
     :param partition: the partition number to access
     :param mandatory: the list of parameters which must not fail to inject
@@ -384,9 +386,11 @@ def inject_data(image, key=None, net=None, metadata=None, admin_password=None,
     """
     LOG.debug("Inject data image=%(image)s key=%(key)s net=%(net)s "
               "metadata=%(metadata)s admin_password=<SANITIZED> "
-              "files=%(files)s os_distro=%(os_distro)s partition=%(partition)s",
-              {'image': image, 'key': key, 'net': net, 'metadata': metadata,
-               'files': files, 'os_distro': os_distro, 'partition': partition})
+              "files=%(files)s hostname=%(hostname)s "
+              "os_distro=%(os_distro)s partition=%(partition)s",
+              {'image': image, 'key': key, 'net': net,
+               'metadata': metadata, 'files': files, 'hostname': hostname,
+               'os_distro': os_distro, 'partition': partition})
     try:
         fs = vfs.VFS.instance_for_image(image, partition)
         fs.setup()
@@ -403,7 +407,7 @@ def inject_data(image, key=None, net=None, metadata=None, admin_password=None,
 
     try:
         return inject_data_into_fs(fs, key, net, metadata, admin_password,
-                                   files, os_distro, mandatory)
+                                   files, hostname, os_distro, mandatory)
     finally:
         fs.teardown()
 
@@ -472,7 +476,7 @@ def clean_lxc_namespace(container_dir):
 
 
 def inject_data_into_fs(fs, key, net, metadata, admin_password, files,
-                        os_distro, mandatory=()):
+                        hostname, os_distro, mandatory=()):
     """Injects data into a filesystem already mounted by the caller.
     Virt connections can call this directly if they mount their fs
     in a different way to inject_data.
@@ -484,7 +488,7 @@ def inject_data_into_fs(fs, key, net, metadata, admin_password, files,
     Raises an exception if a mandatory item can't be injected.
     """
     status = True
-    for inject in ('key', 'net', 'metadata', 'admin_password', 'files'):
+    for inject in ('key', 'net', 'metadata', 'admin_password', 'hostname', 'files'):
         inject_val = locals()[inject]
         inject_func = globals()['_inject_%s_into_fs' % inject]
         if inject_val:
@@ -604,6 +608,30 @@ def _inject_net_into_fs(net, os_distro, fs):
     fs.set_permissions(netdir, 0o744)
 
     _inject_file_into_fs(fs, netfile, net)
+
+
+def _inject_hostname_into_fs(hostname, os_distro, fs):
+    """Inject /etc/sysconfig/network into the filesystem rooted at fs.
+
+    hostname is the name of machine to be configured.
+    """
+
+    LOG.debug("Inject key fs=%(fs)s hostname=%(hostname)s",
+              {'fs': fs, 'hostname': hostname})
+    if os_distro in ['rhel', 'fedora', 'centos']:
+        netfile = os.path.join('etc', 'sysconfig', 'network')
+        net_data = "HOSTNAME=%s\nNETWORKING=yes" % hostname
+    elif os_distro in ['debian', 'ubuntu', 'cirros']:
+        netfile = os.path.join('etc', 'hostname')
+        net_data = hostname
+    else:
+        return
+
+    #fs.make_path(netdir)
+    #fs.set_ownership(netdir, "root", "root")
+    #fs.set_permissions(netdir, 0o744)
+
+    _inject_file_into_fs(fs, netfile, net_data)
 
 
 def _inject_admin_password_into_fs(admin_passwd, os_distro, fs):
