@@ -3054,6 +3054,12 @@ class LibvirtDriver(driver.ComputeDriver):
           files -- a list of files needs to be injected
           suffix -- a string used as an image name suffix
         """
+        # Handles the instance OS distribution
+        os_distro = None
+        system_metadata = instance.get('system_metadata')
+        if system_metadata:
+            os_distro = system_metadata.get('image_os_distro')
+        
         # Handles the partition need to be used.
         target_partition = None
         if not instance.kernel_id:
@@ -3075,7 +3081,8 @@ class LibvirtDriver(driver.ComputeDriver):
 
         # Handles the network injection.
         net = netutils.get_injected_network_template(
-                network_info, libvirt_virt_type=CONF.libvirt.virt_type)
+                network_info, os_distro,
+                libvirt_virt_type=CONF.libvirt.virt_type)
 
         # Handles the metadata injection
         metadata = instance.get('metadata')
@@ -3096,6 +3103,7 @@ class LibvirtDriver(driver.ComputeDriver):
             try:
                 disk.inject_data(injection_image.get_model(self._conn),
                                  key, net, metadata, admin_pass, files,
+                                 os_distro=os_distro,
                                  partition=target_partition,
                                  mandatory=('files',))
             except Exception as e:

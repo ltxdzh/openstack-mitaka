@@ -358,7 +358,7 @@ class _DiskImage(object):
 # Public module functions
 
 def inject_data(image, key=None, net=None, metadata=None, admin_password=None,
-                files=None, partition=None, mandatory=()):
+                files=None, os_distro=None, partition=None, mandatory=()):
     """Inject the specified items into a disk image.
 
     :param image: instance of nova.virt.image.model.Image
@@ -367,6 +367,7 @@ def inject_data(image, key=None, net=None, metadata=None, admin_password=None,
     :param metadata: the user metadata to inject
     :param admin_password: the root password to set
     :param files: the files to copy into the image
+    :param os_distro: the os distrbution
     :param partition: the partition number to access
     :param mandatory: the list of parameters which must not fail to inject
 
@@ -383,9 +384,9 @@ def inject_data(image, key=None, net=None, metadata=None, admin_password=None,
     """
     LOG.debug("Inject data image=%(image)s key=%(key)s net=%(net)s "
               "metadata=%(metadata)s admin_password=<SANITIZED> "
-              "files=%(files)s partition=%(partition)s",
+              "files=%(files)s os_distro=%(os_distro)s partition=%(partition)s",
               {'image': image, 'key': key, 'net': net, 'metadata': metadata,
-               'files': files, 'partition': partition})
+               'files': files, 'os_distro': os_distro, 'partition': partition})
     try:
         fs = vfs.VFS.instance_for_image(image, partition)
         fs.setup()
@@ -402,7 +403,7 @@ def inject_data(image, key=None, net=None, metadata=None, admin_password=None,
 
     try:
         return inject_data_into_fs(fs, key, net, metadata, admin_password,
-                                   files, mandatory)
+                                   files, os_distro, mandatory)
     finally:
         fs.teardown()
 
@@ -471,7 +472,7 @@ def clean_lxc_namespace(container_dir):
 
 
 def inject_data_into_fs(fs, key, net, metadata, admin_password, files,
-                        mandatory=()):
+                        os_distro, mandatory=()):
     """Injects data into a filesystem already mounted by the caller.
     Virt connections can call this directly if they mount their fs
     in a different way to inject_data.
@@ -488,7 +489,7 @@ def inject_data_into_fs(fs, key, net, metadata, admin_password, files,
         inject_func = globals()['_inject_%s_into_fs' % inject]
         if inject_val:
             try:
-                inject_func(inject_val, fs)
+                inject_func(inject_val, os_distro, fs)
             except Exception as e:
                 if inject in mandatory:
                     raise
@@ -519,7 +520,7 @@ def _inject_file_into_fs(fs, path, contents, append=False):
         fs.replace_file(path, contents)
 
 
-def _inject_metadata_into_fs(metadata, fs):
+def _inject_metadata_into_fs(metadata, os_distro, fs):
     LOG.debug("Inject metadata fs=%(fs)s metadata=%(metadata)s",
               {'fs': fs, 'metadata': metadata})
     _inject_file_into_fs(fs, 'meta.js', jsonutils.dumps(metadata))
@@ -553,7 +554,7 @@ def _setup_selinux_for_keys(fs, sshdir):
     fs.set_permissions(rclocal, 0o700)
 
 
-def _inject_key_into_fs(key, fs):
+def _inject_key_into_fs(key, os_distro, fs):
     """Add the given public ssh key to root's authorized_keys.
 
     key is an ssh key string.
@@ -582,23 +583,30 @@ def _inject_key_into_fs(key, fs):
     _setup_selinux_for_keys(fs, sshdir)
 
 
-def _inject_net_into_fs(net, fs):
+def _inject_net_into_fs(net, os_distro, fs):
     """Inject /etc/network/interfaces into the filesystem rooted at fs.
 
     net is the contents of /etc/network/interfaces.
     """
 
     LOG.debug("Inject key fs=%(fs)s net=%(net)s", {'fs': fs, 'net': net})
-    netdir = os.path.join('etc', 'network')
+    if os_distro in ['rhel', 'fedora', 'centos']:
+        netdir = os.path.join('etc', 'sysconfig', 'network-scripts')
+        netfile = os.path.join('etc', 'sysconfig', 'network-scripts', 'ifcfg-eth0')
+    elif os_distro in ['debian', 'ubuntu', 'cirros']:
+        netdir = os.path.join('etc', 'network')
+        netfile = os.path.join('etc', 'network', 'interfaces')
+    else:
+        return
+    
     fs.make_path(netdir)
     fs.set_ownership(netdir, "root", "root")
     fs.set_permissions(netdir, 0o744)
 
-    netfile = os.path.join('etc', 'network', 'interfaces')
     _inject_file_into_fs(fs, netfile, net)
 
 
-def _inject_admin_password_into_fs(admin_passwd, fs):
+def _inject_admin_password_into_fs(admin_passwd, os_distro, fs):
     """Set the root password to admin_passwd
 
     admin_password is a root password

@@ -57,12 +57,13 @@ def _get_first_network(network, version):
         pass
 
 
-def get_injected_network_template(network_info, use_ipv6=None, template=None,
-                                  libvirt_virt_type=None):
+def get_injected_network_template(network_info, os_distro, use_ipv6=None,
+                                  template=None, libvirt_virt_type=None):
     """Returns a rendered network template for the given network_info.
 
     :param network_info:
         :py:meth:`~nova.network.manager.NetworkManager.get_instance_nw_info`
+    :param os_distro: OS distribution to determine which template to use.
     :param use_ipv6: If False, do not return IPv6 template information
         even if an IPv6 subnet is present in network_info.
     :param template: Path to the interfaces template file.
@@ -73,7 +74,13 @@ def get_injected_network_template(network_info, use_ipv6=None, template=None,
         use_ipv6 = CONF.use_ipv6
 
     if not template:
-        template = CONF.injected_network_template
+        template_dir = CONF.injected_network_template_dir
+        if os_distro in ['rhel', 'fedora', 'centos']:
+            template = os.path.join(template_dir, 'interfaces.rhel.template')
+        elif os_distro in ['debian', 'ubuntu', 'cirros']:
+            template = os.path.join(template_dir, 'interfaces.debian.template')
+        else:
+            template = os.path.join(template_dir, 'interfaces.template')
 
     if not (network_info and template):
         return
